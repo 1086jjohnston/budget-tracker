@@ -1,18 +1,24 @@
+const indexedDB =
+    window.indexedDB ||
+    window.mozIndexedDB ||
+    window.webkitIndexedDB ||
+    window.msIndexedDB ||
+    window.shimIndexedDB;
+
 let db;
 
-const request = indexedDB.open('pizza_hunt', 1);
+const request = indexedDB.open('budgetTracker', 1);
 
-request.onupgradeneeded = function(event) {
-    const db = event.target.result;
-    db.createObjectStore('new_pizza', { autoIncrement: true });
+request.onupgradeneeded = ({target}) => {
+    let db = target.result;
+    db.createObjectStore('working', { autoIncrement: true });
   };
 
-request.onsuccess = function(event) {
-    db = event.target.result;
+request.onsuccess = ({target}) => {
+    db = target.result;
   
     if (navigator.onLine) {
-      // we haven't created this yet, but we will soon, so let's comment it out for now
-      // uploadPizza();
+      checkDatabase();
     }
   };
   
@@ -20,14 +26,42 @@ request.onsuccess = function(event) {
     console.log(event.target.errorCode);
   };
 
-  // This function will be executed if we attempt to submit a new pizza and there's no internet connection
 function saveRecord(record) {
-    // open a new transaction with the database with read and write permissions 
-    const transaction = db.transaction(['new_pizza'], 'readwrite');
+    const transaction = db.transaction(['working'], 'readwrite');
   
-    // access the object store for `new_pizza`
-    const pizzaObjectStore = transaction.objectStore('new_pizza');
+    const store = transaction.objectStore('working');
   
-    // add record to your store with add method
-    pizzaObjectStore.add(record);
+    store.add(record);
   }
+
+  function checkDataBase() {
+    const transaction = db.transaction(['working'], 'readwrite');
+  
+    const store = transaction.objectStore('working');
+  
+    const getAll = store.getAll();
+  
+getAll.onsuccess = function() {
+    if (getAll.result.length > 0) {
+      fetch('/api/transaction/bulk', {
+        method: 'POST',
+        body: JSON.stringify(getAll.result),
+        headers: {
+          Accept: 'application/json, text/plain, */*',
+          'Content-Type': 'application/json'
+        }
+      })
+        .then(response => {return response.json();
+        })
+        .then(() => {
+         
+          const transaction = db.transaction(['working'], 'readwrite');
+          const store = transaction.objectStore('working');
+          store.clear();
+
+        });
+    }
+  };
+  }
+
+  window.addEventListener('online', checkDatabase);
