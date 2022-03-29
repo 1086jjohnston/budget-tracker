@@ -1,49 +1,41 @@
-const indexedDB =
-    window.indexedDB ||
-    window.mozIndexedDB ||
-    window.webkitIndexedDB ||
-    window.msIndexedDB ||
-    window.shimIndexedDB;
-
 let db;
+const request = indexedDB.open('budget', 1);
 
-const request = indexedDB.open('budgetTracker', 1);
+request.onupgradeneeded = function(event) {
+  const db = event.target.result;
+  db.createObjectStore('new_budget', { autoIncrement: true });
+};
 
-request.onupgradeneeded = ({target}) => {
-    let db = target.result;
-    db.createObjectStore('working', { autoIncrement: true });
-  };
+request.onsuccess = function(event) {
+  db = event.target.result;
 
-request.onsuccess = ({target}) => {
-    db = target.result;
-  
-    if (navigator.onLine) {
-      checkDatabase();
-    }
-  };
-  
-  request.onerror = function(event) {
-    console.log(event.target.errorCode);
-  };
+  if (navigator.onLine) {
+    uploadBudget();
+  }
+};
+
+request.onerror = function(event) {
+  console.log(event.target.errorCode);
+};
 
 function saveRecord(record) {
-    const transaction = db.transaction(['working'], 'readwrite');
-  
-    const store = transaction.objectStore('working');
-  
-    store.add(record);
-  }
+  const transaction = db.transaction(['new_budget'], 'readwrite');
 
-  function checkDataBase() {
-    const transaction = db.transaction(['working'], 'readwrite');
-  
-    const store = transaction.objectStore('working');
-  
-    const getAll = store.getAll();
-  
-getAll.onsuccess = function() {
+  const budgetObjectStore = transaction.objectStore('new_budget');
+
+  budgetObjectStore.add(record);
+}
+
+function uploadBudget() {
+  const transaction = db.transaction(['new_budget'], 'readwrite');
+
+  const budgetObjectStore = transaction.objectStore('new_budget');
+
+  const getAll = budgetObjectStore.getAll();
+
+  getAll.onsuccess = function() {
     if (getAll.result.length > 0) {
-      fetch('/api/transaction/bulk', {
+      fetch('/api/transaction', {
         method: 'POST',
         body: JSON.stringify(getAll.result),
         headers: {
@@ -51,17 +43,21 @@ getAll.onsuccess = function() {
           'Content-Type': 'application/json'
         }
       })
-        .then(response => {return response.json();
-        })
-        .then(() => {
-         
-          const transaction = db.transaction(['working'], 'readwrite');
-          const store = transaction.objectStore('working');
-          store.clear();
+        .then(response => response.json())
+        .then(serverResponse => {
+          if (serverResponse.message) {
+            throw new Error(serverResponse);
+          }
 
+          const transaction = db.transaction(['new_budget'], 'readwrite');
+          const budgetObjectStore = transaction.objectStore('new_budget');
+          budgetObjectStore.clear();
+        })
+        .catch(err => {
+          console.log(err);
         });
     }
   };
-  }
+}
 
-  window.addEventListener('online', checkDatabase);
+window.addEventListener('online', uploadBudget);
